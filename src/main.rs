@@ -3,12 +3,14 @@ mod schema;
 
 use crate::schema::Product;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use schema::UpdateProductStock;
+use futures_util::StreamExt;
+use schema::{StockEvent, UpdateProductStock};
 use surrealdb::{
     engine::remote::ws::{Client, Ws},
     opt::auth::Root,
-    Notification, Surreal,
+    Notification, Result, Surreal,
 };
+use tokio::task;
 
 struct State {
     db: Surreal<Client>,
@@ -31,6 +33,13 @@ async fn main() -> std::io::Result<()> {
         .use_db("ecommerce")
         .await
         .expect("Failed to access the Database");
+
+    let db_clone = db.clone();
+    task::spawn(async move {
+        stream_stock_changes(&db_clone)
+            .await
+            .expect("failed to stream");
+    });
 
     HttpServer::new(move || {
         App::new()
@@ -60,6 +69,23 @@ async fn get_inventory_products(state: web::Data<State>) -> impl Responder {
         }
     };
     HttpResponse::Ok().json(products)
+}
+
+async fn stream_stock_changes(db: &Surreal<Client>) -> surrealdb::Result<()> {
+    let mut stream = db.select("notification").live().await?;
+
+    // Process updates as they come in.
+    while let Some(result) = stream.next().await {
+        // Do something with the notification
+        handle(result);
+    }
+
+    // Handle the result of the live query notification
+    fn handle(result: Result<Notification<StockEvent>>) {
+        println!("Received notification: {:?}", result);
+    }
+
+    Ok(())
 }
 
 async fn update_stock(
