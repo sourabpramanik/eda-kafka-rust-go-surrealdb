@@ -59,9 +59,7 @@ async fn get_inventory_products(state: web::Data<State>) -> impl Responder {
             return HttpResponse::InternalServerError().body("Server problems!!");
         }
     };
-
-    dbg!(products);
-    HttpResponse::Ok().body("Hey there!")
+    HttpResponse::Ok().json(products)
 }
 
 async fn update_stock(
@@ -71,12 +69,14 @@ async fn update_stock(
 ) -> impl Responder {
     let db = &state.db;
 
-    let update = db
+    match db
         .query(format!(
             "UPDATE inventory:{} SET units={}",
             product_id, payload.units,
         ))
-        .await;
-    dbg!(update);
-    HttpResponse::Ok().body("Hey there!")
+        .await
+    {
+        Ok(_) => HttpResponse::Ok().body("Stock Updated"),
+        Err(_) => HttpResponse::InternalServerError().body("Server error"),
+    }
 }
