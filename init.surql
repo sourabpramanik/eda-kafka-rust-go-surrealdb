@@ -1,6 +1,6 @@
+-- Inventory
 DEFINE TABLE inventory SCHEMAFULL;
 
--- Define some fields.
 DEFINE FIELD id ON TABLE inventory TYPE record<inventory>;
 DEFINE FIELD name ON TABLE inventory TYPE string;
 DEFINE FIELD price ON TABLE inventory TYPE number;
@@ -28,4 +28,8 @@ INSERT INTO inventory
     { "name": "Anker USB-C Hub", "price": 40, "units": 190 },
     { "name": "MSI GeForce GTX 1650", "price": 150, "units": 160 },
     { "name": "Acer Predator Gaming Monitor", "price": 300, "units": 70 }
-]
+];
+
+DEFINE EVENT inventory_log ON TABLE inventory WHEN $event = "UPDATE" THEN (
+    CREATE notification SET message = "Stock updated", product_id = $after.id, units_before = $before.units, units_after = $after.units, created_at = time::now()
+);
