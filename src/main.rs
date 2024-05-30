@@ -1,9 +1,16 @@
-// mod kafka;
+mod kafka;
 mod schema;
+
+use std::time::Duration;
 
 use crate::schema::Product;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use futures_util::StreamExt;
+use kafka::producer;
+use rdkafka::{
+    message::{Header, OwnedHeaders},
+    producer::{FutureProducer, FutureRecord},
+};
 use schema::{StockEvent, UpdateProductStock};
 use surrealdb::{
     engine::remote::ws::{Client, Ws},
@@ -35,8 +42,10 @@ async fn main() -> std::io::Result<()> {
         .expect("Failed to access the Database");
 
     let db_clone = db.clone();
+    let stock_producer = producer("localhost:9092").await;
+
     task::spawn(async move {
-        stream_stock_changes(&db_clone)
+        stream_stock_changes(&db_clone, &stock_producer)
             .await
             .expect("failed to stream");
     });
@@ -71,18 +80,34 @@ async fn get_inventory_products(state: web::Data<State>) -> impl Responder {
     HttpResponse::Ok().json(products)
 }
 
-async fn stream_stock_changes(db: &Surreal<Client>) -> surrealdb::Result<()> {
+async fn stream_stock_changes(
+    db: &Surreal<Client>,
+    stock_producer: &FutureProducer,
+) -> surrealdb::Result<()> {
     let mut stream = db.select("notification").live().await?;
 
     // Process updates as they come in.
     while let Some(result) = stream.next().await {
-        // Do something with the notification
-        handle(result);
-    }
+        println!("ddsadasasdad");
+        let res: Result<Notification<StockEvent>> = result;
+        let data = &res.unwrap().data;
 
-    // Handle the result of the live query notification
-    fn handle(result: Result<Notification<StockEvent>>) {
-        println!("Received notification: {:?}", result);
+        stock_producer
+            .send(
+                FutureRecord::to("stock_update")
+                    .payload(&format!(
+                        "Message {}",
+                        &serde_json::to_string(data).unwrap()
+                    ))
+                    .key(&format!("Key {}", 1))
+                    .headers(OwnedHeaders::new().insert(Header {
+                        key: "header_key",
+                        value: Some("header_value"),
+                    })),
+                Duration::from_secs(0),
+            )
+            .await
+            .expect("Failed to send message");
     }
 
     Ok(())
