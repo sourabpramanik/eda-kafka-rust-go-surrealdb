@@ -1,5 +1,6 @@
 inventory/Cargo.lock
 inventory/target
 inventory/.env
+
 test.surql
 history.txt

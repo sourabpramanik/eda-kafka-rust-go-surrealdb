@@ -133,7 +133,7 @@ async fn update_stock(
         ))
         .await
     {
-        if let Some(Value::Array(arr)) = query_product.take(0).ok() {
+        if let Ok(Value::Array(arr)) = query_product.take(0) {
             if !arr.is_empty() {
                 if let Value::Object(obj) = &arr[0] {
                     if let Some(Value::Number(units)) = obj.get("units") {
@@ -158,16 +158,16 @@ async fn update_stock(
         ))
         .await
     {
-        if let Some(Value::Array(arr)) = update_product.take(0).ok() {
+        if let Ok(Value::Array(arr)) = update_product.take(0) {
             if !arr.is_empty() {
-                return HttpResponse::Ok().body("Product stock updated");
+                HttpResponse::Ok().body("Product stock updated")
             } else {
-                return HttpResponse::NotFound().body("Product not found or insufficient units");
+                HttpResponse::NotFound().body("Product not found or insufficient units")
             }
         } else {
-            return HttpResponse::InternalServerError().body("Unexpected query response format");
+            HttpResponse::InternalServerError().body("Unexpected query response format")
         }
     } else {
-        return HttpResponse::InternalServerError().body("Server Error");
+        HttpResponse::InternalServerError().body("Server Error")
     }
 }
