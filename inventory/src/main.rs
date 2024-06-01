@@ -102,6 +102,8 @@ async fn stream_stock_changes(
     db: &Surreal<Client>,
     stock_producer: &FutureProducer,
 ) -> surrealdb::Result<()> {
+    let kafka_topic = env::var("KAFKA_TOPIC").expect("KAFKA_TOPIC must be set.");
+
     if let Ok(mut stream) = db.select("inventory_stock_events").live().await {
         while let Some(result) = stream.next().await {
             let res: Result<Notification<StockEvent>> = result;
@@ -109,7 +111,7 @@ async fn stream_stock_changes(
 
             stock_producer
                 .send(
-                    FutureRecord::to("stock_update")
+                    FutureRecord::to(&kafka_topic)
                         .payload(&format!(
                             "Message {}",
                             &serde_json::to_string(data).unwrap()
