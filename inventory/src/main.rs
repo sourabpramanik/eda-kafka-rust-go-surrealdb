@@ -15,6 +15,7 @@ use schema::{StockEvent, UpdateProductStock};
 use surrealdb::{
     engine::remote::ws::{Client, Ws},
     opt::auth::Root,
+    sql::Value,
     Notification, Result, Surreal,
 };
 use tokio::task;
@@ -84,30 +85,30 @@ async fn stream_stock_changes(
     db: &Surreal<Client>,
     stock_producer: &FutureProducer,
 ) -> surrealdb::Result<()> {
-    let mut stream = db.select("notification").live().await?;
+    if let Ok(mut stream) = db.select("inventory_stock_events").live().await {
+        while let Some(result) = stream.next().await {
+            let res: Result<Notification<StockEvent>> = result;
+            let data = &res.unwrap().data;
 
-    // Process updates as they come in.
-    while let Some(result) = stream.next().await {
-        println!("ddsadasasdad");
-        let res: Result<Notification<StockEvent>> = result;
-        let data = &res.unwrap().data;
-
-        stock_producer
-            .send(
-                FutureRecord::to("stock_update")
-                    .payload(&format!(
-                        "Message {}",
-                        &serde_json::to_string(data).unwrap()
-                    ))
-                    .key(&format!("Key {}", 1))
-                    .headers(OwnedHeaders::new().insert(Header {
-                        key: "header_key",
-                        value: Some("header_value"),
-                    })),
-                Duration::from_secs(0),
-            )
-            .await
-            .expect("Failed to send message");
+            stock_producer
+                .send(
+                    FutureRecord::to("stock_update")
+                        .payload(&format!(
+                            "Message {}",
+                            &serde_json::to_string(data).unwrap()
+                        ))
+                        .key(&format!("Key {}", 1))
+                        .headers(OwnedHeaders::new().insert(Header {
+                            key: "header_key",
+                            value: Some("header_value"),
+                        })),
+                    Duration::from_secs(0),
+                )
+                .await
+                .expect("FAILED TO PRODUCE THE MESSAGE");
+        }
+    } else {
+        println!("Failed to stream")
     }
 
     Ok(())
@@ -118,16 +119,55 @@ async fn update_stock(
     state: web::Data<State>,
     payload: web::Json<UpdateProductStock>,
 ) -> impl Responder {
-    let db = &state.db;
+    if product_id.is_empty() {
+        return HttpResponse::BadRequest().body("Invalid Product Id");
+    }
 
-    match db
+    let db = &state.db;
+    let mut available_units: u16 = 0;
+
+    if let Ok(mut query_product) = db
         .query(format!(
-            "UPDATE inventory:{} SET units={}",
-            product_id, payload.units,
+            "SELECT units FROM inventory:{} WHERE units>={}",
+            product_id, payload.units
         ))
         .await
     {
-        Ok(_) => HttpResponse::Ok().body("Stock Updated"),
-        Err(_) => HttpResponse::InternalServerError().body("Server error"),
+        if let Some(Value::Array(arr)) = query_product.take(0).ok() {
+            if !arr.is_empty() {
+                if let Value::Object(obj) = &arr[0] {
+                    if let Some(Value::Number(units)) = obj.get("units") {
+                        available_units = units.to_usize() as u16;
+                    }
+                }
+            } else {
+                return HttpResponse::NotFound().body("Product not found or insufficient units");
+            }
+        } else {
+            return HttpResponse::InternalServerError().body("Unexpected query response format");
+        }
+    } else {
+        return HttpResponse::InternalServerError().body("Server Error");
+    }
+
+    if let Ok(mut update_product) = db
+        .query(format!(
+            "UPDATE inventory:{} SET units={}",
+            product_id,
+            available_units - payload.units,
+        ))
+        .await
+    {
+        if let Some(Value::Array(arr)) = update_product.take(0).ok() {
+            if !arr.is_empty() {
+                return HttpResponse::Ok().body("Product stock updated");
+            } else {
+                return HttpResponse::NotFound().body("Product not found or insufficient units");
+            }
+        } else {
+            return HttpResponse::InternalServerError().body("Unexpected query response format");
+        }
+    } else {
+        return HttpResponse::InternalServerError().body("Server Error");
     }
 }
