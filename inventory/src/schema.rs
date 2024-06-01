@@ -27,9 +27,9 @@ pub struct EventThing {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct StockEvent {
     pub id: EventThing,
-    pub created_at: Datetime,
-    pub message: String,
-    pub product_id: ProductThing,
-    pub units_before: u16,
-    pub units_after: u16,
+    pub time: Datetime,
+    pub action: String,
+    pub product: ProductThing,
+    pub before_update: u16,
+    pub after_update: u16,
 }

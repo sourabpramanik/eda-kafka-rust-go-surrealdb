@@ -30,6 +30,6 @@ INSERT INTO inventory
     { "name": "Acer Predator Gaming Monitor", "price": 300, "units": 70 }
 ];
 
-DEFINE EVENT inventory_log ON TABLE inventory WHEN $event = "UPDATE" THEN (
-    CREATE notification SET message = "Stock updated", product_id = $after.id, units_before = $before.units, units_after = $after.units, created_at = time::now()
+DEFINE EVENT stock_logs ON TABLE inventory WHEN $before.units != $after.units THEN (
+	CREATE inventory_stock_events SET product = $value.id, time = time::now(), before_update = $before.units, after_update = $after.units, action = 'stock updated'
 );
