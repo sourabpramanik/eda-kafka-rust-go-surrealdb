@@ -1,8 +1,10 @@
-inventory/Cargo.lock
-inventory/target
-inventory/.env
+inventory_service/Cargo.lock
+inventory_service/target
+inventory_service/.env
 
 config
 
 test.surql
 history.txt
+
+shipment_service/.env
